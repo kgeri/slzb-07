@@ -1,1 +1,3 @@
 .venv
+zigbee.db*
+
