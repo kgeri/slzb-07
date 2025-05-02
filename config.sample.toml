@@ -1,0 +1,7 @@
+[[devices]]
+name = "outside"
+device_id = "00:12:ab:cd:ef:01:02:03"
+
+[[devices]]
+name = "room_!"
+device_id = "00:00:..."

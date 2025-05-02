@@ -21,6 +21,12 @@
 ```
 python3 -m venv .venv
 source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+```
+cp config.sample.toml config.toml
+# Form your network (see below) then add the IEEE ids and give them names
 ```
 
 ## ZigPy
