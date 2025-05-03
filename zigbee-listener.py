@@ -6,8 +6,10 @@ from prometheus_client.core import Gauge, REGISTRY
 from zigpy.zcl.clusters.measurement import PressureMeasurement, RelativeHumidity, TemperatureMeasurement
 import asyncio
 import logging
+import os
 import time
 import tomllib
+import traceback
 import zigpy
 
 
@@ -29,18 +31,6 @@ class MainListener:
             device_id: str = device['device_id']
             device_name: str = device['name']
             self._device_id_to_device_name[device_id] = device_name
-
-    def raw_device_initialized(self, dev):
-        logging.debug(f'raw_device_initialized {dev}')
-
-    def device_initialized(self, dev):
-        logging.info(f'device_initialized name={dev.name}, ieee={dev.ieee}, model={dev.model}, endpoints={dev.endpoints}')
-
-    def device_removed(self, dev):
-        logging.info(f'device_removed: {dev.name}')
-
-    def device_joined(self, dev: zigpy.device.Device):
-        logging.info(f'device_joined: name={dev.name}, ieee={dev.ieee}, model={dev.model}')
     
     def handle_message(self,
                        dev: zigpy.device.Device,
@@ -65,7 +55,7 @@ class MainListener:
             device_name = self._device_id_to_device_name[device_id]
             self._temp_celsius.labels(location = device_name).set(temp_c)
             self._humidity_pcnt.labels(location = device_name).set(humidity_pcnt)
-            logging.info(f'Reported dev={device_id}, pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C')
+            logging.info(f'Reported name={device_name}, device_id={device_id}, pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C')
         else:
             logging.warning(f'Device not configured: {dev} (pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C)')
 
@@ -89,27 +79,29 @@ async def main():
     metrics_port = config.get('metrics_port', 9102)
     devices = config['devices']
 
-    # Radio init
-    logging.info(f'Listening on radio: {ezsp_device}, devices={devices}')
-    app = await ControllerApplication.new(config={
-        'database_path': 'zigbee.db',
-        'device': {
-            'path': ezsp_device,
-        }
-    }, auto_form=True)
-    listener = MainListener(devices)
-    app.add_listener(listener)
-
-    # Prometheus server start
-    prometheus_server = await start_http_server(addr='0.0.0.0', port=metrics_port)
-    logging.info(f'Metrics exporter listening on 0.0.0.0:{metrics_port}')
-
+    app: ControllerApplication = None
     try:
+        # Radio init
+        logging.info(f'Listening on radio: {ezsp_device}, devices={devices}')
+        app = await ControllerApplication.new(config={
+            'database_path': 'zigbee.db',
+            'device': {
+                'path': ezsp_device,
+            }
+        }, auto_form=False, start_radio=True)
+        app.add_listener(MainListener(devices))
+
+        # Prometheus server start
+        await start_http_server(addr='0.0.0.0', port=metrics_port)
+        logging.info(f'Metrics exporter listening on 0.0.0.0:{metrics_port}')
+
         await asyncio.get_running_loop().create_future()
-    except asyncio.exceptions.CancelledError:
-        logging.info('Shutting down...')
-        await app.shutdown()
-        await prometheus_server.close()
+    except:
+        traceback.print_exc()
+        logging.info('Shutting down app...')
+        if app: await app.shutdown()
+        logging.info('Exiting.')
+        os._exit(1) # This seems to be the only way to kill this f*$1ng Python process with asyncio...
 
 if __name__ == '__main__':
     asyncio.run(main())

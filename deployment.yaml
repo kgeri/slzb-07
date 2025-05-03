@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zigbee-listener
+spec:
+  selector:
+    matchLabels:
+      app: zigbee-listener
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: zigbee-listener
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: srvu
+      containers:
+        - name: zigbee-listener
+          image: srvu:5000/zigbee-listener:${IMAGE_TAG}
+          imagePullPolicy: Always
+          securityContext:
+            runAsGroup: 20 # 20=dialout, but it's really privileged: true that gives us access to /dev/ttyUSB0
+            privileged: true
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "100m"
+            limits:
+              memory: "64Mi"
+              cpu: "500m"
+          ports:
+            - containerPort: 9102
+          volumeMounts:
+            - mountPath: /dev/ttyUSB0
+              name: ttyusb
+      volumes:
+        - name: ttyusb
+          hostPath:
+            path: /dev/ttyUSB0

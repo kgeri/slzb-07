@@ -1,7 +1,17 @@
-[[devices]]
-name = "outside"
-device_id = "00:12:ab:cd:ef:01:02:03"
+ezsp_device = "/dev/ttyUSB0"
 
 [[devices]]
-name = "room_!"
-device_id = "00:00:..."
+name = "outside"
+device_id = "00:01:02:03:04:05:06:07"
+
+[[devices]]
+name = "room_1"
+device_id = "00:01:02:03:04:05:06:07"
+
+[[devices]]
+name = "room_2"
+device_id = "00:01:02:03:04:05:06:07"
+
+[[devices]]
+name = "room_3"
+device_id = "00:01:02:03:04:05:06:07"

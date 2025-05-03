@@ -45,19 +45,31 @@ So the library we need is [zigpy/bellows](https://github.com/zigpy/bellows) spec
 
 ### Forming a network
 
+#### Initial setup
+
 * Set the device: `export EZSP_DEVICE=/dev/ttyUSB0`
 * Device info: `zigpy radio ezsp $EZSP_DEVICE info`
 * Scan for interference: `zigpy radio ezsp $EZSP_DEVICE energy-scan`
 * (Pick the most quiet channel)
-* Change the channel: `zigpy radio ezsp $EZSP_DEVICE change-channel -c <channel>`
-* Form a network: `zigpy radio ezsp $EZSP_DEVICE form`
-* Allow pairing: `zigpy -v radio --database zigbee.db ezsp $EZSP_DEVICE permit -t 60`
-* (Reset/pair your end devices in this timeframe)
+* Change the channel (optional): `zigpy radio ezsp $EZSP_DEVICE change-channel -c <channel>`
+* Reset the radio (optional): `zigpy radio --database zigbee.db ezsp $EZSP_DEVICE reset`
+* **IMPORTANT**: you need to re-form the network after firmware upgrades!
+* **IMPORTANT**: `zigpy radio ...` commands do NOT save anything into the `--database` for some reason, so I built my own form/permit commands:
+  * Form a network: make sure `zigbee.db` does not exist in the dir, then run `./permit-join.py`
+
+#### Adding a new device
+
+* Allow pairing: run `./permit-join.py`, you have 4 minutes to pair (`Ctrl^C` to exit)
+* Reset/pair your end devices in this timeframe. **IMPORTANT**: WAIT until all endpoints are discovered! Zigbee is SLOW.
+* Note the `ieee` device id, and put it in your `config.toml`
 * Verify the paired devices: `zigpy radio ezsp $EZSP_DEVICE backup` (look for the `devices` section at the end)
 
-Note: the coordinator remembers joined devices, so I'm not 100% sure we actually need the `--database` option.
+Note: the coordinator remembers joined devices, but `zigbee.db` has the network details, so we need to deploy that, too!
 
-**IMPORTANT**: you need to re-form the network after firmware upgrades!
+### Aqara notes
+
+* Press and hold the button for 5+ seconds to pair
+* Press once to wake it up (triggers a measurement)
 
 ## Links
 
