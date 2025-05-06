@@ -3,13 +3,15 @@
 from bellows.zigbee.application import ControllerApplication
 from prometheus_async.aio.web import start_http_server
 from prometheus_client.core import Gauge, REGISTRY
-from zigpy.zcl.clusters.measurement import PressureMeasurement, RelativeHumidity, TemperatureMeasurement
+from zigpy.zcl.clusters.general import PowerConfiguration
+from zigpy.zcl.clusters.measurement import PressureMeasurement, RelativeHumidity, SoilMoisture, TemperatureMeasurement
 import asyncio
 import logging
 import os
 import time
 import tomllib
 import traceback
+import zhaquirks
 import zigpy
 
 
@@ -22,42 +24,71 @@ class MainListener:
     _device_id_to_device_name: dict[str]
     _temp_celsius: Gauge
     _humidity_pcnt: Gauge
+    _battery_pcnt: Gauge
+    _soil_moisture_pct: Gauge
 
     def __init__(self, devices):
         self._device_id_to_device_name = {}
         self._temp_celsius = Gauge('temp_celsius', 'Temperature (C)', ['location'])
         self._humidity_pcnt = Gauge('humidity_pcnt', 'Relative humidity (%)', ['location'])
+        self._battery_pcnt = Gauge('battery_pcnt', 'Remaining battery (%)', ['location'])
+        self._soil_moisture_pct = Gauge('soil_moisture_pct', 'Soil moisture (%)', ['location'])
         for device in devices:
             device_id: str = device['device_id']
             device_name: str = device['name']
             self._device_id_to_device_name[device_id] = device_name
     
     def handle_message(self,
-                       dev: zigpy.device.Device,
+                       dev: zigpy.device,
                        profile_id: int,
                        cluster_id: int,
                        src_ep: int,
                        dst_ep: int,
                        data: bytes):
-        logging.debug(f'handle_message: device={dev}, src_ep={src_ep}, dst_ep={dst_ep}, data={data}')
+            logging.debug(f'handle_message: device={dev}, src_ep={src_ep}, dst_ep={dst_ep}, data={data}')
 
-        for ep in dev.endpoints.values():
-            if type(ep) != zigpy.endpoint.Endpoint: continue
-            for clus in ep.in_clusters.values():
-                match clus:
-                    case PressureMeasurement(): pressure_kPa = clus.get('measured_value') / 1000
-                    case RelativeHumidity(): humidity_pcnt = clus.get('measured_value') / 100
-                    case TemperatureMeasurement(): temp_c = clus.get('measured_value') / 100
-                    case _: logging.debug(f'Unknown: {clus}')
-        
-        device_id = str(dev.ieee)
-        if device_id in self._device_id_to_device_name:
+            device_id = str(dev.ieee)
+            if device_id not in self._device_id_to_device_name:
+                logging.warning(f'Device not configured: {dev} (pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C)')
+                return
+            
             device_name = self._device_id_to_device_name[device_id]
-            self._temp_celsius.labels(location = device_name).set(temp_c)
-            self._humidity_pcnt.labels(location = device_name).set(humidity_pcnt)
-            logging.info(f'Reported name={device_name}, device_id={device_id}, pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C')
-        else:
-            logging.warning(f'Device not configured: {dev} (pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C)')
+            
+            # Reading input clusters
+            for ep in dev.endpoints.values():
+                if not isinstance(ep, zigpy.endpoint.Endpoint): continue
+                for clus in ep.in_clusters.values():
+                    try:
+                        match clus:
+                            # Generic ones
+                            case PressureMeasurement():
+                                pressure_kPa = clus.get('measured_value') / 1000
+                                logging.info(f'[{device_name}] pressure_kPa={pressure_kPa}')
+                            
+                            case RelativeHumidity():
+                                humidity_pcnt = clus.get('measured_value') / 100
+                                self._humidity_pcnt.labels(location = device_name).set(humidity_pcnt)
+                                logging.info(f'[{device_name}] humidity_pcnt={humidity_pcnt}')
+
+                            case TemperatureMeasurement():
+                                temp_c = clus.get('measured_value') / 100
+                                self._temp_celsius.labels(location = device_name).set(temp_c)
+                                logging.info(f'[{device_name}] temp_celsius={temp_c}')
+                            
+                            case SoilMoisture():
+                                soil_moisture_pct = clus.get('measured_value') / 100
+                                self._soil_moisture_pct.labels(location = device_name).set(soil_moisture_pct)
+                                logging.info(f'[{device_name}] soil_moisture_pct={soil_moisture_pct}')
+
+                            case PowerConfiguration():
+                                battery_pcnt = clus.get('battery_percentage_remaining') / 2 # Note: for some crazy reason, Aqara and Tuya quirks both do an x2 on the percentage
+                                self._battery_pcnt.labels(location = device_name).set(battery_pcnt)
+                                logging.info(f'[{device_name}] battery_pcnt={battery_pcnt}')
+
+                            case _: logging.debug(f'Unknown Cluster: {clus}')
+                    except:
+                        traceback.print_exc()
+                        return
 
 async def main():
     # Logging config
@@ -81,6 +112,9 @@ async def main():
 
     app: ControllerApplication = None
     try:
+        # ZHA Quirks (for Tuya)
+        zhaquirks.setup()
+
         # Radio init
         logging.info(f'Listening on radio: {ezsp_device}, devices={devices}')
         app = await ControllerApplication.new(config={
