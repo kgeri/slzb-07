@@ -3,6 +3,8 @@
 from bellows.zigbee.application import ControllerApplication
 from prometheus_async.aio.web import start_http_server
 from prometheus_client.core import Gauge, REGISTRY
+from zigpy.device import Device
+from zigpy.endpoint import Endpoint
 from zigpy.zcl.clusters.general import PowerConfiguration
 from zigpy.zcl.clusters.measurement import PressureMeasurement, RelativeHumidity, SoilMoisture, TemperatureMeasurement
 import asyncio
@@ -12,7 +14,6 @@ import time
 import tomllib
 import traceback
 import zhaquirks
-import zigpy
 
 
 class MainListener:
@@ -21,7 +22,7 @@ class MainListener:
     Look for `listener_event` in the Zigpy source or just look at the logged warnings.
     '''
 
-    _device_id_to_device_name: dict[str]
+    _device_id_to_device_name: dict[str, str]
     _temp_celsius: Gauge
     _humidity_pcnt: Gauge
     _battery_pcnt: Gauge
@@ -39,24 +40,24 @@ class MainListener:
             self._device_id_to_device_name[device_id] = device_name
     
     def handle_message(self,
-                       dev: zigpy.device,
+                       dev: Device,
                        profile_id: int,
                        cluster_id: int,
                        src_ep: int,
                        dst_ep: int,
                        data: bytes):
-            logging.debug(f'handle_message: device={dev}, src_ep={src_ep}, dst_ep={dst_ep}, data={data}')
+            logging.info(f'handle_message: device={dev}, src_ep={src_ep}, dst_ep={dst_ep}, data={data}')
 
             device_id = str(dev.ieee)
             if device_id not in self._device_id_to_device_name:
-                logging.warning(f'Device not configured: {dev} (pressure={pressure_kPa}kPa, humidity={humidity_pcnt}%, temp={temp_c}C)')
+                logging.warning(f'Device not configured: {dev}')
                 return
             
             device_name = self._device_id_to_device_name[device_id]
             
             # Reading input clusters
             for ep in dev.endpoints.values():
-                if not isinstance(ep, zigpy.endpoint.Endpoint): continue
+                if not isinstance(ep, Endpoint): continue
                 for clus in ep.in_clusters.values():
                     try:
                         match clus:
@@ -85,7 +86,7 @@ class MainListener:
                                 self._battery_pcnt.labels(location = device_name).set(battery_pcnt)
                                 logging.info(f'[{device_name}] battery_pcnt={battery_pcnt}')
 
-                            case _: logging.debug(f'Unknown Cluster: {clus}')
+                            case _: logging.info(f'Unknown Cluster: {clus}')
                     except:
                         traceback.print_exc()
                         return
@@ -110,7 +111,7 @@ async def main():
     metrics_port = config.get('metrics_port', 9102)
     devices = config['devices']
 
-    app: ControllerApplication = None
+    app: ControllerApplication|None = None
     try:
         # ZHA Quirks (for Tuya)
         zhaquirks.setup()
@@ -122,8 +123,8 @@ async def main():
             'device': {
                 'path': ezsp_device,
             }
-        }, auto_form=False, start_radio=True)
-        app.add_listener(MainListener(devices))
+        }, auto_form=False, start_radio=True) # type: ignore
+        app.add_listener(MainListener(devices)) # type: ignore
 
         # Prometheus server start
         await start_http_server(addr='0.0.0.0', port=metrics_port)
