@@ -82,8 +82,10 @@ class MainListener:
                                 logging.info(f'[{device_name}] soil_moisture_pct={soil_moisture_pct}')
 
                             case PowerConfiguration():
-                                battery_pcnt = clus.get('battery_percentage_remaining') / 2 # Note: for some crazy reason, Aqara and Tuya quirks both do an x2 on the percentage
-                                self._battery_pcnt.labels(location = device_name).set(battery_pcnt)
+                                battery_pcnt = clus.get('battery_percentage_remaining')
+                                if battery_pcnt: # Note: for some crazy reason, Aqara and Tuya quirks both do an x2 on the percentage
+                                    battery_pcnt = battery_pcnt / 2
+                                    self._battery_pcnt.labels(location = device_name).set(battery_pcnt)
                                 logging.info(f'[{device_name}] battery_pcnt={battery_pcnt}')
 
                             case _: logging.info(f'Unknown Cluster: {clus}')
