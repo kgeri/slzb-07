@@ -57,11 +57,27 @@ class MainListener:
                 logging.warning(f'Device not configured: {dev}')
                 return
 
-            device_name = self._device_id_to_device_name[device_id]
+            logging.info(f'handle_message: device={dev}, src_ep={src_ep}, dst_ep={dst_ep}, data={data}')
+
+            # zigpy fires this listener before it applies the packet to the
+            # device, i.e. before quirks translate manufacturer reports (such as
+            # the Aqara 0xFCC0 frame that carries the battery voltage into the
+            # power cluster). Reading the caches here would publish the previous
+            # values, so defer the scan by one event-loop turn.
+            try:
+                asyncio.get_running_loop().call_soon(self._report_device, dev)
+            except RuntimeError:
+                self._report_device(dev)
+
+    def _report_device(self, dev: Device):
+            device_id = str(dev.ieee)
+            device_name = self._device_id_to_device_name.get(device_id)
+            if device_name is None:
+                return
+
             now = time.time()
             self._last_seen_unix[device_name] = now
             self._last_seen_ts.labels(location = device_name).set(now)
-            logging.info(f'handle_message: device={dev}, src_ep={src_ep}, dst_ep={dst_ep}, data={data}')
 
             # Reading input clusters
             for ep in dev.endpoints.values():
@@ -91,7 +107,7 @@ class MainListener:
 
                             case PowerConfiguration():
                                 battery_pcnt = clus.get('battery_percentage_remaining')
-                                if battery_pcnt: # Note: for some crazy reason, Aqara and Tuya quirks both do an x2 on the percentage
+                                if battery_pcnt is not None: # Note: for some crazy reason, Aqara and Tuya quirks both do an x2 on the percentage
                                     battery_pcnt = battery_pcnt / 2
                                     self._battery_pcnt.labels(location = device_name).set(battery_pcnt)
                                 logging.info(f'[{device_name}] battery_pcnt={battery_pcnt}')
