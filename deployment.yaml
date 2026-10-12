@@ -15,6 +15,7 @@ spec:
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/metrics"
+        prometheus.io/port: "9102"
     spec:
       nodeSelector:
         kubernetes.io/hostname: srvu
@@ -30,7 +31,7 @@ spec:
               memory: "32Mi"
               cpu: "100m"
             limits:
-              memory: "64Mi"
+              memory: "128Mi"
               cpu: "500m"
           ports:
             - containerPort: 9102

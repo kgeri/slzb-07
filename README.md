@@ -55,11 +55,11 @@ So the library we need is [zigpy/bellows](https://github.com/zigpy/bellows) spec
 * Reset the radio (optional): `zigpy radio --database zigbee.db ezsp $EZSP_DEVICE reset`
 * **IMPORTANT**: you need to re-form the network after firmware upgrades!
 * **IMPORTANT**: `zigpy radio ...` commands do NOT save anything into the `--database` for some reason, so I built my own form/permit commands:
-  * Form a network: make sure `zigbee.db` does not exist in the dir, then run `./permit-join.py`
+  * Form a network: make sure `zigbee.db` does not exist in the dir, then run `./permit-join.py` (the listener cannot do this — it always starts with `auto_form=False`)
 
 #### Adding a new device
 
-* Allow pairing: run `./permit-join.py`, you have 4 minutes to pair (`Ctrl^C` to exit)
+* Allow pairing without stopping the listener: `./permit-join-api.sh` (see [Re-pairing via API](#re-pairing-via-api)). You have up to 4 minutes.
 * Reset/pair your end devices in this timeframe. **IMPORTANT**: WAIT until all endpoints are discovered! Zigbee is SLOW.
 * Note the `ieee` device id, and put it in your `config.toml`
 * Verify the paired devices: `zigpy radio ezsp $EZSP_DEVICE backup` (look for the `devices` section at the end)
@@ -70,6 +70,20 @@ Note: the coordinator remembers joined devices, but `zigbee.db` has the network 
 
 * Press and hold the button for 5+ seconds to pair
 * Press once to wake it up (triggers a measurement)
+
+## Re-pairing via API
+
+The listener runs an admin API on `127.0.0.1:9103` (never exposed), reached via
+the helper script:
+
+```shell
+./permit-join-api.sh          # 240s
+./permit-join-api.sh 120      # custom window (max 254s)
+```
+
+It prints `/devices` (with last-seen age) then opens the network; pair within
+the window. `last_seen_timestamp_seconds` is exported on `9102` for staleness
+alerts.
 
 ## Links
 
