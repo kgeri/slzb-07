@@ -21,7 +21,7 @@ spec:
         kubernetes.io/hostname: srvu
       containers:
         - name: zigbee-listener
-          image: srvu:5000/zigbee-listener:${IMAGE_TAG}
+          image: docker.ogreg.org/zigbee-listener:${IMAGE_TAG}
           imagePullPolicy: Always
           securityContext:
             runAsGroup: 20 # 20=dialout, but it's really privileged: true that gives us access to /dev/ttyUSB0
